@@ -135,6 +135,7 @@
 			exercise.instructions = $sce.trustAsHtml(data.instructions);
 			exercise.api = $sce.trustAsHtml(data.api);
 			exercise.code = data.code;
+			setReadOnlyLines(data.code);
 			exercise.currentWorldID = data.selectedWorldID;
 			for(var worldID in data.initialWorlds) {
 				if(data.initialWorlds.hasOwnProperty(worldID)) {
@@ -199,6 +200,9 @@
 		
 		function runCode() {
 			var args;
+
+			var doc = exercise.editor.getDoc();
+			exercise.code = doc.getValue();
 
 			exercise.isPlaying = true;
 			exercise.worldIDs.map(function(key) {
@@ -340,6 +344,34 @@
 
 		function setSelectedNextExercise(exo) {
 			exercise.selectedNextExercise = exo;
+		}
+
+		function setReadOnlyLines(code) {
+			var doc = exercise.editor.getDoc();
+
+			var readOnlyLines = [];
+			var readOnlyLine;
+			
+			var lines = code.split('\n');
+			var line;
+			
+			var i;
+
+			doc.setValue(exercise.code);
+			for(i=0; i<lines.length; i++) {
+				line = lines[i];
+				if(line.indexOf('// READ-ONLY') > -1) {
+					readOnlyLines.push(i);
+				}
+			}
+			for(i=0; i<readOnlyLines.length; i++) {
+				readOnlyLine = readOnlyLines[i];
+				doc.markText(
+					{ line: readOnlyLine, ch: 0 },
+					{ line: readOnlyLine+1, ch: 0},
+					{ readOnly: true, className: "active-operation" }
+				);
+			}
 		}
 
 		function setIDEMode(pl) {
