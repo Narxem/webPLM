@@ -1,37 +1,30 @@
 package actors
 
+import java.util.{ Properties, UUID }
+import scala.concurrent.Future
 import akka.actor._
-import play.api.libs.json._
-import play.api.mvc.RequestHeader
+import akka.pattern.{ ask, pipe }
+import akka.util.Timeout
+import scala.concurrent.duration._
+import codes.reactive.scalatime.{ Duration, Instant }
 import json._
-import models.GitHubIssueManager
-import models.{ PLM, User }
-import models.execution.ExecutionManager
-import models.User
 import log.PLMLogger
-import spies._
-import plm.core.model.lesson.Exercise
-import plm.core.model.lesson.Lesson
-import plm.core.model.lesson.Lecture
-import plm.core.lang.ProgrammingLanguage
-import plm.universe.Entity
-import plm.universe.World
-import plm.universe.IWorldView
-import plm.universe.GridWorld
-import plm.universe.GridWorldCell
-import plm.universe.bugglequest.BuggleWorld
-import plm.universe.bugglequest.AbstractBuggle
-import plm.universe.bugglequest.BuggleWorldCell
-import play.api.Play.current
-import play.api.i18n.Lang
-import play.api.Logger
-import java.util.UUID
+import models.GitHubIssueManager
+import models.{ PLM, User}
 import models.daos.UserDAORestImpl
-import codes.reactive.scalatime._
-import Scalatime._
-import java.util.Properties
+import models.execution.ExecutionManager
+import play.api.Logger
 import play.api.Play
 import play.api.Play.current
+import play.api.i18n.Lang
+import play.api.libs.json._
+import plm.core.lang.ProgrammingLanguage
+import plm.core.model.lesson.{ Exercise, Lecture }
+import spies._
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.language.postfixOps
+import LessonsActor._
+import models.lesson.Lesson
 
 object PLMActor {
   def props(executionManager: ExecutionManager, userAgent: String, actorUUID: String, gitID: String, newUser: Boolean, preferredLang: Option[Lang], lastProgLang: Option[String], trackUser: Option[Boolean])(out: ActorRef) = Props(new PLMActor(executionManager, userAgent, actorUUID, gitID, newUser, preferredLang, lastProgLang, trackUser, out))
@@ -50,6 +43,9 @@ class PLMActor (
     out: ActorRef)
   extends Actor {
   
+  implicit val timeout = Timeout(5 seconds)
+  
+  var lessonsActor: ActorRef = context.actorOf(LessonsActor.props)
   var gitHubIssueManager: GitHubIssueManager = new GitHubIssueManager
   
   var availableLangs: Seq[Lang] = Lang.availables
@@ -106,9 +102,14 @@ class PLMActor (
           currentTrackUser = false
           plm.setTrackUser(currentTrackUser)
         case "getLessons" =>
-          sendMessage("lessons", Json.obj(
-            "lessons" -> LessonToJson.lessonsWrite(plm.lessons)
-          ))
+          (lessonsActor ? GetLessonsList).mapTo[Array[Lesson]].map { lessons =>
+            import models.lesson.Lesson.lessonWrites
+
+            Logger.error("Get answer from lessonsActor")
+            sendMessage("lessons", Json.obj(
+              "lessons" -> lessons
+            ))
+          }
         case "setProgrammingLanguage" =>
           var optProgrammingLanguage: Option[String] = (msg \ "args" \ "programmingLanguage").asOpt[String]
           (optProgrammingLanguage.getOrElse(None)) match {
