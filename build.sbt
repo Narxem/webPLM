@@ -57,3 +57,5 @@ ScalariformKeys.preferences := ScalariformKeys.preferences.value
   .setPreference(FormatXml, false)
   .setPreference(DoubleIndentClassDeclaration, false)
   .setPreference(PreserveDanglingCloseParenthesis, true)
+
+unmanagedSourceDirectories in Compile += baseDirectory.value / "exercises"
