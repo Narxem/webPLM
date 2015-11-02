@@ -24,8 +24,10 @@ import spies._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.language.postfixOps
 import LessonsActor._
+import ExercisesActor._
 import models.lesson.Lesson
 import play.api.libs.functional.syntax._
+import plm.core.model.Game
 
 object PLMActor {
   def props(executionManager: ExecutionManager, userAgent: String, actorUUID: String, gitID: String, newUser: Boolean, preferredLang: Option[Lang], lastProgLang: Option[String], trackUser: Option[Boolean])(out: ActorRef) = Props(new PLMActor(executionManager, userAgent, actorUUID, gitID, newUser, preferredLang, lastProgLang, trackUser, out))
@@ -47,6 +49,8 @@ class PLMActor (
   implicit val timeout = Timeout(5 seconds)
   
   var lessonsActor: ActorRef = context.actorOf(LessonsActor.props)
+  var exercisesActor: ActorRef = context.actorOf(ExercisesActor.props)
+
   var gitHubIssueManager: GitHubIssueManager = new GitHubIssueManager
   
   var availableLangs: Seq[Lang] = Lang.availables
@@ -145,6 +149,7 @@ class PLMActor (
               Logger.debug("setLang: non-correct JSON")
           }
         case "getExercise" =>
+          /*
           var optLessonID: Option[String] = (msg \ "args" \ "lessonID").asOpt[String]
           var optExerciseID: Option[String] = (msg \ "args" \ "exerciseID").asOpt[String]
           var lecture: Lecture = null;
@@ -159,6 +164,15 @@ class PLMActor (
           if(lecture != null) {
             sendMessage("exercise", Json.obj(
               "exercise" -> LectureToJson.lectureWrites(lecture, plm.programmingLanguage, plm.getStudentCode, plm.getInitialWorlds, plm.getSelectedWorldID)
+            ))
+          }
+          */
+          (exercisesActor ? GetExercise("Environment")).mapTo[Exercise].map { exercise =>
+            Logger.error("On a eu la réponse !")
+            var json: JsObject = ExerciseToJson.exerciseWrites(exercise, Game.JAVA, "", currentPreferredLang.toLocale)
+            Logger.error("On envoie l'exercice!")
+            sendMessage("exercise", Json.obj(
+              "exercise" -> json
             ))
           }
         case "runExercise" =>
@@ -181,13 +195,6 @@ class PLMActor (
           sendMessage("exercise", Json.obj(
               "exercise" -> LectureToJson.lectureWrites(lecture, plm.programmingLanguage, plm.getStudentCode, plm.getInitialWorlds, plm.getSelectedWorldID)
           ))
-        case "getExercises" =>
-          if(plm.currentExercise != null) {
-            var lectures = plm.game.getCurrentLesson.getRootLectures.toArray(Array[Lecture]())
-            sendMessage("exercises", Json.obj(
-              "exercises" -> ExerciseToJson.exercisesWrite(lectures) 
-            ))
-          }
         case "getLangs" =>
           sendMessage("langs", Json.obj(
             "selected" -> LangToJson.langWrite(currentPreferredLang),
@@ -206,7 +213,7 @@ class PLMActor (
               )
               UserDAORestImpl.update(currentUser)
               sendMessage("userUpdated", Json.obj())
-             (optTrackUser.getOrElse(None)) match {
+              (optTrackUser.getOrElse(None)) match {
                 case trackUser: Boolean =>
                   plm.setTrackUser(currentTrackUser)
                 case _ =>
