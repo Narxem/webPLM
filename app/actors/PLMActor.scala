@@ -25,6 +25,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.language.postfixOps
 import LessonsActor._
 import ExercisesActor._
+import ExecutionActor._
 import models.lesson.Lesson
 import play.api.libs.functional.syntax._
 import plm.core.model.Game
@@ -50,6 +51,7 @@ class PLMActor (
   
   val lessonsActor: ActorRef = context.actorOf(LessonsActor.props)
   val exercisesActor: ActorRef = context.actorOf(ExercisesActor.props)
+  val executionActor: ActorRef = context.actorOf(ExecutionActor.props)
 
   var gitHubIssueManager: GitHubIssueManager = new GitHubIssueManager
   
@@ -77,6 +79,8 @@ class PLMActor (
   var userIdle: Boolean = false;
   var idleStart: Instant = null
   var idleEnd: Instant = null
+
+  var currentExercise: Exercise = _
   
   initExecutionManager
   initSpies
@@ -117,7 +121,7 @@ class PLMActor (
             ))
           }
         case "getExercisesList" =>
-          var optLessonName: Option[String] = (msg \ "args" \ "lessonName").asOpt[String]
+          val optLessonName: Option[String] = (msg \ "args" \ "lessonName").asOpt[String]
           (optLessonName.getOrElse(None)) match {
             case lessonName: String =>
               (lessonsActor ? GetExercisesList(lessonName)).mapTo[Array[models.lesson.Lecture]].map { lectures =>
@@ -168,12 +172,14 @@ class PLMActor (
           }
           */
           (exercisesActor ? GetExercise("Environment")).mapTo[Exercise].map { exercise =>
-            var json: JsObject = ExerciseToJson.exerciseWrites(exercise, Game.JAVA, "", currentPreferredLang.toLocale)
+            currentExercise = exercise
+            val json: JsObject = ExerciseToJson.exerciseWrites(exercise, Game.JAVA, "", currentPreferredLang.toLocale)
             sendMessage("exercise", Json.obj(
               "exercise" -> json
             ))
           }
         case "runExercise" =>
+          /*
           var optLessonID: Option[String] = (msg \ "args" \ "lessonID").asOpt[String]
           var optExerciseID: Option[String] = (msg \ "args" \ "exerciseID").asOpt[String]
           var optCode: Option[String] = (msg \ "args" \ "code").asOpt[String]
@@ -184,6 +190,15 @@ class PLMActor (
             case (lessonID:String, exerciseID: String, code: String, _) =>
               plm.runExercise(lessonID, exerciseID, code, null)
             case (_, _, _, _) =>
+              Logger.debug("runExercise: non-correctJSON")
+          }
+          * 
+          */
+          val optCode: Option[String] = (msg \ "args" \ "code").asOpt[String]
+          optCode.getOrElse(None) match {
+            case code: String =>
+              executionActor ! StartExecution(out, currentExercise, code)
+            case _ =>
               Logger.debug("runExercise: non-correctJSON")
           }
         case "stopExecution" =>
