@@ -10,17 +10,17 @@ import codes.reactive.scalatime.{ Duration, Instant }
 import json._
 import log.PLMLogger
 import models.GitHubIssueManager
-import models.{ PLM, User}
+import models.User
 import models.daos.UserDAORestImpl
 import models.execution.ExecutionManager
+import models.lesson.Lecture
 import play.api.Logger
 import play.api.Play
 import play.api.Play.current
 import play.api.i18n.Lang
 import play.api.libs.json._
 import plm.core.lang.ProgrammingLanguage
-import plm.core.model.lesson.{ Exercise, Lecture }
-import spies._
+import plm.core.model.lesson.Exercise
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.language.postfixOps
 import LessonsActor._
@@ -30,7 +30,6 @@ import GitActor._
 import SessionActor._
 import models.lesson.Lesson
 import play.api.libs.functional.syntax._
-import plm.core.model.Game
 import plm.core.model.lesson.ExecutionProgress
 import org.xnap.commons.i18n.{ I18n, I18nFactory }
 import models.ProgrammingLanguages
@@ -52,82 +51,63 @@ class PLMActor (
     trackUser: Option[Boolean], 
     out: ActorRef)
   extends Actor {
-  
+
   implicit val timeout = Timeout(5 seconds)
-  
+
   val lessonsActor: ActorRef = context.actorOf(LessonsActor.props)
   val exercisesActor: ActorRef = context.actorOf(ExercisesActor.props)
   val executionActor: ActorRef = context.actorOf(ExecutionActor.props)
   val gitActor: ActorRef = context.actorOf(GitActor.props(pushActor, "dummy", userAgent))
-  val sessionActor: ActorRef = context.actorOf(SessionActor.props(gitActor, Game.programmingLanguages))
+  val sessionActor: ActorRef = context.actorOf(SessionActor.props(gitActor, ProgrammingLanguages.programmingLanguages))
 
   val i18n: I18n = I18nFactory.getI18n(getClass(),"org.plm.i18n.Messages", new Locale("en"), I18nFactory.FALLBACK)
 
   var gitHubIssueManager: GitHubIssueManager = new GitHubIssueManager
-  
+
   var availableLangs: Seq[Lang] = Lang.availables
-  var plmLogger: PLMLogger = new PLMLogger
-  
-  var progLangSpy: ProgLangListener  = null
-  var humanLangSpy: HumanLangListener = null
-  
+
+  var optCurrentExercise: Option[Exercise] = None
   var currentUser: User = null
-  
+  var currentProgLang: ProgrammingLanguage = initProgLang(lastProgLang)
   var currentPreferredLang: Lang = preferredLang.getOrElse(Lang("en"))
-  
+
   var currentGitID: String = null
   setCurrentGitID(gitID, newUser)
-  
+
   var currentTrackUser: Boolean = trackUser.getOrElse(false)
-  
-  var properties: Properties = new Properties
-  properties.setProperty("webplm.version", Play.configuration.getString("application.version").get)
-  properties.setProperty("webplm.user-agent", userAgent)
-  
-  var plm: PLM = new PLM(executionManager, properties, currentGitID, plmLogger, currentPreferredLang.toLocale, lastProgLang, currentTrackUser)
-  
+
   var userIdle: Boolean = false;
   var idleStart: Instant = null
   var idleEnd: Instant = null
 
-  var currentExercise: Exercise = _
-  var optCurrentExercise: Option[Exercise] = None
-  
-  var currentProgLang: ProgrammingLanguage = ProgrammingLanguages.defaultProgrammingLanguage
-  lastProgLang match {
-    case Some(progLang: String) =>
-      currentProgLang = ProgrammingLanguages.getProgrammingLanguage(progLang)
-    case _ =>
-  }
-
-  initExecutionManager
-  initSpies
   registerActor
-  
+
   def receive = {
     case msg: JsValue =>
       Logger.debug("Received a message")
       Logger.debug(msg.toString())
-      var cmd: Option[String] = (msg \ "cmd").asOpt[String]
+      val cmd: Option[String] = (msg \ "cmd").asOpt[String]
       cmd.getOrElse(None) match {
         case "signIn" | "signUp" =>
           setCurrentUser((msg \ "user").asOpt[User].get)
-          plm.setUserUUID(currentGitID)
           currentTrackUser = currentUser.trackUser.getOrElse(false)
-          plm.setTrackUser(currentTrackUser)
           currentUser.preferredLang match {
             case Some(newLang: Lang) =>
               currentPreferredLang = newLang
-              plm.setLang(currentPreferredLang)
+              // FIXME: Re-implement me
+              // plm.setLang(currentPreferredLang)
             case _ =>
               savePreferredLang()
           }
-          plm.setProgrammingLanguage(currentUser.lastProgLang.getOrElse("Java"))
+          // FIXME: Re-implement me
+          // plm.setProgrammingLanguage(currentUser.lastProgLang.getOrElse("Java"))
         case "signOut" =>
           clearCurrentUser()
-          plm.setUserUUID(currentGitID)
+          // FIXME: Re-implement me
+          // plm.setUserUUID(currentGitID)
           currentTrackUser = false
-          plm.setTrackUser(currentTrackUser)
+          // FIXME: Re-implement me
+          // plm.setTrackUser(currentTrackUser)
         case "getLessons" =>
           (lessonsActor ? GetLessonsList).mapTo[Array[Lesson]].map { lessons =>
             val jsonLessons: JsArray = Lesson.arrayToJSON(lessons, currentPreferredLang)
@@ -139,8 +119,7 @@ class PLMActor (
           val optLessonName: Option[String] = (msg \ "args" \ "lessonName").asOpt[String]
           optLessonName match {
             case Some(lessonName: String) =>
-              (lessonsActor ? GetExercisesList(lessonName)).mapTo[Array[models.lesson.Lecture]].map { lectures =>
-                import models.lesson.Lecture
+              (lessonsActor ? GetExercisesList(lessonName)).mapTo[Array[Lecture]].map { lectures =>
                 sendMessage("lectures", Json.obj(
                   "lectures" -> lectures
                 ))
@@ -149,11 +128,13 @@ class PLMActor (
               Logger.debug("getExercisesList: non-correct JSON")
           }
         case "setProgrammingLanguage" =>
-          var optProgrammingLanguage: Option[String] = (msg \ "args" \ "programmingLanguage").asOpt[String]
+          val optProgrammingLanguage: Option[String] = (msg \ "args" \ "programmingLanguage").asOpt[String]
           optProgrammingLanguage match {
             case Some(programmingLanguage: String) =>
               currentProgLang = ProgrammingLanguages.getProgrammingLanguage(programmingLanguage)
-              plm.setProgrammingLanguage(programmingLanguage)
+              // FIXME: Re-implement me 
+              // plm.setProgrammingLanguage(programmingLanguage)
+              
               saveLastProgLang(programmingLanguage)
             case _ =>
               Logger.debug("setProgrammingLanguage: non-correct JSON")
@@ -163,7 +144,8 @@ class PLMActor (
           optLang match {
             case Some(lang: String) =>
               currentPreferredLang = Lang(lang)
-              plm.setLang(currentPreferredLang)
+              // FIXME: Re-implement me
+              // plm.setLang(currentPreferredLang)
               savePreferredLang()
             case _ =>
               Logger.debug("setLang: non-correct JSON")
@@ -173,8 +155,8 @@ class PLMActor (
             gitActor ! SwitchExercise(exercise, optCurrentExercise)
 
             optCurrentExercise = Some(exercise)
-            (sessionActor ? RetrieveCode(exercise, plm.programmingLanguage)).mapTo[String].map { code =>
-              val json: JsObject = ExerciseToJson.exerciseWrites(exercise, Game.JAVA, code, currentPreferredLang.toLocale)
+            (sessionActor ? RetrieveCode(exercise, currentProgLang)).mapTo[String].map { code =>
+              val json: JsObject = ExerciseToJson.exerciseWrites(exercise, currentProgLang, code, currentPreferredLang.toLocale)
               sendMessage("exercise", Json.obj(
                 "exercise" -> json
               ))
@@ -206,12 +188,20 @@ class PLMActor (
               Logger.debug("runExercise: non-correctJSON")
           }
         case "stopExecution" =>
-          plm.stopExecution
+          // FIXME: Re-implement me
+          // plm.stopExecution
         case "revertExercise" =>
+          // FIXME: Re-implement me
+          optCurrentExercise match {
+            case Some(currentExercise: Exercise) =>
+              currentExercise.getDefaultSourceFile(currentProgLang).getBody
+          }
+          /*
           var lecture = plm.revertExercise
           sendMessage("exercise", Json.obj(
               "exercise" -> LectureToJson.lectureWrites(lecture, plm.programmingLanguage, plm.getStudentCode, plm.getInitialWorlds, plm.getSelectedWorldID)
           ))
+          */
         case "getLangs" =>
           sendMessage("langs", Json.obj(
             "selected" -> LangToJson.langWrite(currentPreferredLang),
@@ -232,7 +222,8 @@ class PLMActor (
               sendMessage("userUpdated", Json.obj())
               optTrackUser match {
                 case Some(trackUser: Boolean) =>
-                  plm.setTrackUser(currentTrackUser)
+                  // FIXME: Re-implement me
+                  // plm.setTrackUser(currentTrackUser)
                 case _ =>
                   Logger.debug("setTrackUser: non-correct JSON")
               }
@@ -249,7 +240,8 @@ class PLMActor (
             case Some(trackUser: Boolean) =>
               currentTrackUser = trackUser
               saveTrackUser(currentTrackUser)
-              plm.setTrackUser(currentTrackUser)              
+              // FIXME: Re-implement me
+              // plm.setTrackUser(currentTrackUser)              
             case _ =>
               Logger.debug("setTrackUser: non-correct JSON")
           }
@@ -283,7 +275,8 @@ class PLMActor (
           var optComment: Option[String] = (msg \ "args" \ "comment").asOpt[String]
           (optCommonErrorID, optAccuracy, optHelp, optComment) match  {
             case (Some(commonErrorID: Int), Some(accuracy: Int), Some(help: Int), Some(comment: String)) =>
-              plm.signalCommonErrorFeedback(commonErrorID, accuracy, help, comment)
+              // FIXME: Re-implement me
+              // plm.signalCommonErrorFeedback(commonErrorID, accuracy, help, comment)
             case _ =>
               Logger.debug("commonErrorFeedback: non-correct JSON")
           }
@@ -291,7 +284,8 @@ class PLMActor (
           var optTipID: Option[String] = (msg \ "args" \ "tipID").asOpt[String]
           optTipID match {
             case Some(tipID: String) =>
-              plm.signalReadTip(tipID)
+              // FIXME: Re-implement me
+              // plm.signalReadTip(tipID)
             case _ =>
               Logger.debug("readTip: non-correct JSON")
           } 
@@ -301,28 +295,28 @@ class PLMActor (
           Logger.error("cmd: non-correct JSON")
       }
   }
-  
+
   def createMessage(cmdName: String, mapArgs: JsValue): JsValue = {
     return Json.obj(
       "cmd" -> cmdName,
       "args" -> mapArgs
     )
   }
-  
+
   def sendMessage(cmdName: String, mapArgs: JsValue) {
     out ! createMessage(cmdName, mapArgs)
   }
-  
+
   def setCurrentUser(newUser: User) {
     currentUser = newUser
     sendMessage("user", Json.obj(
         "user" -> currentUser
       )
     )
-    
+
     setCurrentGitID(currentUser.gitID.toString, false)
   }
-  
+
   def clearCurrentUser() {
     currentUser = null
     sendMessage("user", Json.obj())
@@ -330,7 +324,7 @@ class PLMActor (
     currentGitID = UUID.randomUUID.toString
     setCurrentGitID(currentGitID, true)
   }
-  
+
   def setCurrentGitID(newGitID: String, toSend: Boolean) {
     currentGitID = newGitID;
     if(toSend) {
@@ -340,19 +334,6 @@ class PLMActor (
       )
     }
   } 
-  
-  def initExecutionManager() {
-    executionManager.setPLMActor(this)
-    executionManager.setGame(plm.game)
-  }
-  
-  def initSpies() {
-    progLangSpy = new ProgLangListener(this, plm)
-    plm.game.addProgLangListener(progLangSpy, true)
-    
-    humanLangSpy = new HumanLangListener(this, plm)
-    plm.game.addHumanLangListener(humanLangSpy, true)
-  }
 
   def registerActor() {
     ActorsMap.add(actorUUID, self)
@@ -393,7 +374,8 @@ class PLMActor (
       var duration = Duration.between(idleStart, idleEnd)
       Logger.debug("end idling at: "+ idleEnd)
       Logger.debug("duration: " + duration)
-      plm.signalIdle(idleStart.toString, idleEnd.toString, duration.toString)
+      // FIXME: Re-implement me
+      // plm.signalIdle(idleStart.toString, idleEnd.toString, duration.toString)
     }
     else {
       Logger.error("receive 'userBack' but not previous 'userIdle'")
@@ -411,12 +393,20 @@ class PLMActor (
     }
   }
 
+  def initProgLang(lastProgLang: Option[String]): ProgrammingLanguage = {
+    lastProgLang match {
+    case Some(progLang: String) =>
+      return ProgrammingLanguages.getProgrammingLanguage(progLang)
+    case _ =>
+      ProgrammingLanguages.defaultProgrammingLanguage
+    }
+  }
+
   override def postStop() = {
     Logger.debug("postStop: websocket closed - removing the spies")
     if(userIdle) {
       clearUserIdle
     }
     ActorsMap.remove(actorUUID)
-    plm.quit(progLangSpy, humanLangSpy)
   }
 }
