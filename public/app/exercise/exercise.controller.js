@@ -45,7 +45,7 @@
 
     exercise.connection = connection;
     exercise.langs = langs;
-    
+
     exercise.tabs = [];
     exercise.currentTab = 0;
     exercise.drawFnct = null;
@@ -125,7 +125,7 @@
     exercise.resizeCanvas = resizeCanvas;
 
     exercise.readTip = readTip;
-    
+
     exercise.idle = false;
 
     startIdleLoop();
@@ -200,10 +200,11 @@
         exercise.logs += args.msg;
         break;
       case 'newProgLang':
-        updateUI(args.newProgLang, args.instructions, args.api, args.code);
+        updateInstructions(args.instructions, args.api);
+        updateCodeEditor(args.newProgLang, args.code);
         break;
       case 'newHumanLang':
-        updateUI(exercise.currentProgrammingLanguage, args.instructions, args.api, null);
+        updateInstructions(args.instructions, args.api);
         break;
       }
     }
@@ -450,16 +451,8 @@
 
         window.addEventListener('resize', resizeCodeMirror, false);
 
-        progLangs.setProgLangs(data.programmingLanguages);
-        var progLang = data.programmingLanguages[0];
-        for (var i = 0; i < data.programmingLanguages.length; i++) {
-          var pl = data.programmingLanguages[i];
-          if (pl.lang === data.currentProgrammingLanguage) {
-            progLang = pl;
-          }
-        }
-        progLangs.setCurrentProglang(progLang);
-        updateUI(progLang, data.instructions, data.api, data.code.trim());
+        updateInstructions(data.instructions, data.api);
+        updateCodeEditor(progLangs.getCurrentProgLang(), data.code.trim());
       }
 
       $(document).foundation('dropdown', 'reflow');
@@ -606,9 +599,9 @@
       }
     }
 
-	function handleOut(msg) {
+    function handleOut(msg) {
       exercise.result += msg;
-	}
+  	}
 
     function startUpdateModelLoop() {
       exercise.updateModelLoop = $timeout(updateModel, $scope.timer);
@@ -741,7 +734,7 @@
         }
       }
     }
-    
+
     function setDrawFnct(drawFnct) {
       exercise.drawService.setDraw(drawFnct);
       exercise.drawFnct = drawFnct;
@@ -802,50 +795,48 @@
         $timeout(exercise.resizeCanvas, 0);
       }
     }
-    
-    function updateUI(pl, instructions, api, code) {
-      if (pl !== null) {
-        if (pl.lang === 'Blockly') {
-          exercise.ide = 'blockly';
-          if (code !== null) {
-            exercise.studentCode = code;
-            if (exercise.studentCode !== '') {
-              var xml = Blockly.Xml.textToDom(exercise.studentCode);
-              Blockly.getMainWorkspace().clear();
-              Blockly.Xml.domToWorkspace(Blockly.getMainWorkspace(), xml);
-              $timeout(function () {
-                var blocks = Blockly.getMainWorkspace().getAllBlocks();
-                for (var i = 0; i < blocks.length; i++) {
-                  blocks[i].render();
-                }
-              }, 0);
-            }
-          }
-          updateToolbox();
-        } else {
-          if (exercise.ide === 'blockly') {
+
+    function updateCodeEditor(progLang, code) {
+      if (progLang.lang === 'Blockly') {
+        exercise.ide = 'blockly';
+        if (code !== null) {
+          exercise.studentCode = code;
+          if (exercise.studentCode !== '') {
+            var xml = Blockly.Xml.textToDom(exercise.studentCode);
             Blockly.getMainWorkspace().clear();
+            Blockly.Xml.domToWorkspace(Blockly.getMainWorkspace(), xml);
+            $timeout(function () {
+              var blocks = Blockly.getMainWorkspace().getAllBlocks();
+              for (var i = 0; i < blocks.length; i++) {
+                blocks[i].render();
+              }
+            }, 0);
           }
-          exercise.ide = 'codemirror';
-          setIDEMode(pl);
-          if (code !== null)
-            exercise.code = code;
-          $timeout(function () {
-            exercise.editor.refresh();
-          }, 0);
         }
+        updateToolbox();
+      } else {
+        if (exercise.ide === 'blockly') {
+          Blockly.getMainWorkspace().clear();
+        }
+        exercise.ide = 'codemirror';
+        setIDEMode(progLang);
+        if (code !== null)
+          exercise.code = code;
+        $timeout(function () {
+          exercise.editor.refresh();
+        }, 0);
       }
-      updateInstructions(instructions, api);
     }
-  }
-  function readTip(tipID) {
-    this.connection.sendMessage('readTip', { tipID: tipID+'' });
-  }
-  
-  function getOperationsBuffer(buffer) {
-    if (buffer.constructor !== Array) {
-      return JSON.parse(buffer);
+
+    function readTip(tipID) {
+      this.connection.sendMessage('readTip', { tipID: tipID+'' });
     }
-    return buffer;
+
+    function getOperationsBuffer(buffer) {
+      if (buffer.constructor !== Array) {
+        return JSON.parse(buffer);
+      }
+      return buffer;
+    }
   }
 })();
