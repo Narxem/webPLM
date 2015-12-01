@@ -22,7 +22,7 @@ object TurtleWorldToJson {
         "sizeHints" -> sizeHintsWrite(turtleWorld.sizeHints())
     )
   }
-  
+
   def shapesWrite(shapes: Iterator[Shape]): JsValue = {
     var jsArray: JsArray = JsArray()
     var shape: Shape = null
@@ -50,9 +50,9 @@ object TurtleWorldToJson {
           Logger.debug("TurtleWorldToJson: shape not supported")
       }
     }
-    return jsArray
+    jsArray
   }
-  
+
   def sizeHintsWrite(sizeHints: Iterator[SizeHint]): JsValue = {
     var jsArray: JsArray = JsArray()
     var sizeHint: SizeHint = null
@@ -66,7 +66,7 @@ object TurtleWorldToJson {
           "text" -> sizeHint.text
         ))
     }
-    return jsArray
+    jsArray
   }
-  
+
 }
