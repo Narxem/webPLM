@@ -110,7 +110,7 @@ class PLMActor (
           gitActor ! SwitchUser(currentGitID, None)
         case "getLessons" =>
           (lessonsActor ? GetLessonsList).mapTo[Array[Lesson]].map { lessons =>
-            val jsonLessons: JsArray = Lesson.arrayToJSON(lessons, currentHumanLang)
+            val jsonLessons: JsArray = Lesson.arrayToJson(lessons, currentHumanLang)
             sendMessage("lessons", Json.obj(
               "lessons" -> jsonLessons
             ))
@@ -120,8 +120,9 @@ class PLMActor (
           optLessonName match {
             case Some(lessonName: String) =>
               (lessonsActor ? GetExercisesList(lessonName)).mapTo[Array[Lecture]].map { lectures =>
+                val jsonLectures: JsArray = Lecture.arrayToJson(lectures, currentHumanLang)
                 sendMessage("lectures", Json.obj(
-                  "lectures" -> lectures
+                  "lectures" -> jsonLectures
                 ))
               }
             case _ =>
@@ -146,12 +147,16 @@ class PLMActor (
               Logger.debug("setLang: non-correct JSON")
           }
         case "getExercise" =>
+          val optLessonID: Option[String] = (msg \ "args" \ "lessonID").asOpt[String]
           (exercisesActor ? GetExercise("Environment")).mapTo[Exercise].map { exercise =>
             gitActor ! SwitchExercise(exercise, optCurrentExercise)
 
             optCurrentExercise = Some(exercise)
             (sessionActor ? RetrieveCode(exercise, currentProgLang)).mapTo[String].map { code =>
               val json: JsObject = ExerciseToJson.exerciseWrites(exercise, currentProgLang, code, currentHumanLang.toLocale)
+
+              optCurrentLesson = optLessonID
+
               sendMessage("exercise", Json.obj(
                 "exercise" -> json
               ))
@@ -440,9 +445,10 @@ class PLMActor (
     var json: JsObject = Json.obj("newHumanLang" -> LangToJson.langWrite(currentHumanLang))
 
     val futureTuple = for {
+      lessonsListJson <- generateUpdatedLessonsListJson
       exercisesListJson <- generateUpdatedExercisesListJson
       exerciseJson <- Future { generateUpdatedExerciseJson }
-    } yield (exercisesListJson, exerciseJson)
+    } yield (lessonsListJson, exercisesListJson, exerciseJson)
 
     val tuple = Await.result(futureTuple, 1 seconds)
     tuple.productIterator.foreach { additionalJson =>
@@ -451,14 +457,21 @@ class PLMActor (
     json
   }
 
+  def generateUpdatedLessonsListJson(): Future[JsValue] = {
+    (lessonsActor ? GetLessonsList).mapTo[Array[Lesson]].map { lessons =>
+      Json.obj(
+        "lessons" -> Lesson.arrayToJson(lessons, currentHumanLang)
+      )
+    }
+  }
+  
   def generateUpdatedExercisesListJson(): Future[JsObject] = {
     optCurrentLesson match {
     case Some(lessonName: String) =>
       (lessonsActor ? GetExercisesList(lessonName)).mapTo[Array[Lecture]].map { lectures =>
-        val lecturesJson: JsObject = Json.obj(
-          "lectures" -> lectures
+        Json.obj(
+          "lectures" -> Lecture.arrayToJson(lectures, currentHumanLang)
         )
-        lecturesJson
       }
     case _ =>
       Future { Json.obj() }
