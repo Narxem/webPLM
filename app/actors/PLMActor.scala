@@ -84,9 +84,7 @@ class PLMActor (
   var currentGitID: String = null
   setCurrentGitID(gitID, newUser)
 
-  var userIdle: Boolean = false;
-  var idleStart: Instant = null
-  var idleEnd: Instant = null
+  var optIdle: Option[Instant] = None
 
   registerActor
 
@@ -246,9 +244,9 @@ class PLMActor (
               Logger.debug("updateUser: non-correct JSON")
           }
         case "userIdle" =>
-          setUserIdle
+          setIdle
         case "userBack" =>
-          clearUserIdle
+          clearIdle
         case "setTrackUser" =>
           val optTrackUser: Option[Boolean] = (msg \ "args" \ "trackUser").asOpt[Boolean]
           optTrackUser match {
@@ -406,27 +404,23 @@ class PLMActor (
     }
   }
 
-  def setUserIdle() {
-    userIdle = true
-    idleStart = Instant.apply
+  def setIdle() {
+    val idleStart: Instant = Instant.apply
+    optIdle = Some(idleStart)
     Logger.debug("start idling at: "+ idleStart)      
   }
 
-  def clearUserIdle() {
-    userIdle = false
-    idleEnd = Instant.apply
-    if(idleStart != null) {
-      var duration = Duration.between(idleStart, idleEnd)
+  def clearIdle() {
+    optIdle match {
+    case Some(idleStart: Instant) =>
+      val idleEnd: Instant = Instant.apply
+      val duration = Duration.between(idleStart, idleEnd)
       Logger.debug("end idling at: "+ idleEnd)
       Logger.debug("duration: " + duration)
-      // FIXME: Re-implement me
-      // plm.signalIdle(idleStart.toString, idleEnd.toString, duration.toString)
+      gitActor ! Idle(idleStart.toString, idleEnd.toString, duration.toString)
+    case _ =>
     }
-    else {
-      Logger.error("receive 'userBack' but not previous 'userIdle'")
-    }
-    idleStart = null
-    idleEnd = null
+    optIdle = None
   }
 
   def initProgLang(lastProgLang: Option[String]): ProgrammingLanguage = {
@@ -538,9 +532,7 @@ class PLMActor (
 
   override def postStop() = {
     Logger.debug("postStop: websocket closed - removing the spies")
-    if(userIdle) {
-      clearUserIdle
-    }
+    clearIdle
     ActorsMap.remove(actorUUID)
   }
 }
