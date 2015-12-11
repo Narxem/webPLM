@@ -27,7 +27,7 @@ object LectureToJson {
 
     try {
       json = json.as[JsObject] ++ Json.obj(
-          "initialWorlds" -> WorldToJson.worldsWrite(initialWorlds)
+          "initialWorlds" -> WorldToJson.worldsWrite(initialWorlds, progLang)
       )
     }
     catch {
