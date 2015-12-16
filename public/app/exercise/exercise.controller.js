@@ -286,6 +286,7 @@
               exercise.drawFnct = BatWorldView.draw;
               world = new BatWorld(dataInitialWorld);
               answerWorld = new BatWorld(dataAnswerWorld);
+              world.setExpected(answerWorld);
               BatWorldView.setScope($scope);
               initDrawWithDOM(BatWorldView.draw);
               break;
@@ -672,6 +673,7 @@
     }
 
     $scope.$on('$destroy', function () {
+      console.log('On passe ici!');
       offDisplayMessage();
       $timeout.cancel(exercise.idleLoop);
       $timeout.cancel(exercise.updateModelLoop);
