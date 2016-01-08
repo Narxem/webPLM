@@ -38,6 +38,9 @@ import scala.concurrent.Await
 import plm.universe.{ Entity, Operation, World }
 import json.operation.OperationToJson
 import execution.TribunalActor
+import akka.pattern.AskTimeoutException
+import scala.util.Failure
+import scala.util.Success
 
 object PLMActor {
   def props(pushActor: ActorRef, executionManager: ExecutionManager, userAgent: String, actorUUID: String, gitID: String, newUser: Boolean, preferredLang: Option[Lang], lastProgLang: Option[String], trackUser: Option[Boolean])(out: ActorRef) = Props(new PLMActor(pushActor, executionManager, userAgent, actorUUID, gitID, newUser, preferredLang, lastProgLang, trackUser, out))
@@ -193,22 +196,18 @@ class PLMActor (
           optCode match {
             case Some(code: String) =>
               (executionActor ? StartExecution(out, exercise, currentProgLang, code)).mapTo[ExecutionProgress].map { executionResult =>
-                sessionActor ! SetCode(exercise, currentProgLang, code)
-                gitActor ! Executed(exercise, executionResult, code, currentHumanLang.language)
-
-                val msgType: Int = if (executionResult.outcome == ExecutionProgress.outcomeKind.PASS) 1 else 0
-                val commonErrorID: Int = executionResult.commonErrorID
-                val commonErrorText: String = executionResult.commonErrorText
-                val msg: String = executionResult.getMsg(i18n)
-
-                val mapArgs: JsValue = Json.obj(
-                  "msgType" -> msgType,
-                  "msg" -> msg, 
-                  "commonErrorID" -> commonErrorID, 
-                  "commonErrorText" -> commonErrorText
-                )
-
-                sendMessage("executionResult", mapArgs)
+                handleExecutionResult(exercise, code, executionResult)
+              } onFailure {
+                case timeout: AskTimeoutException => 
+                  Logger.error("PLMActor: executionActor ? StartExecution timeout")                  
+                  // Need to generate a special executionResult
+                  val executionResult: ExecutionProgress = new ExecutionProgress(currentProgLang)
+                  val timeoutMsg: String = "The assessment of your code \"time out\". It may due to an infinite loop inside your program!\n" + 
+                    "However, if your program doesn't seems to have started, it may indicates that our servers are overloaded. Sorry for the inconvenience and please wait a few moments before submitting your program again."
+                  executionResult.setExecutionError(timeoutMsg)
+                  handleExecutionResult(exercise, code, executionResult)
+                case t: Throwable =>
+                  t.printStackTrace
               }
             case _ =>
               Logger.debug("runExercise: non-correctJSON")
@@ -568,6 +567,25 @@ class PLMActor (
     case _ =>
       Future { Json.obj() }
     }
+  }
+
+  def handleExecutionResult(exercise: Exercise, code: String, executionResult: ExecutionProgress) {
+    sessionActor ! SetCode(exercise, currentProgLang, code)
+    gitActor ! Executed(exercise, executionResult, code, currentHumanLang.language)
+
+    val msgType: Int = if (executionResult.outcome == ExecutionProgress.outcomeKind.PASS) 1 else 0
+    val commonErrorID: Int = executionResult.commonErrorID
+    val commonErrorText: String = executionResult.commonErrorText
+    val msg: String = executionResult.getMsg(i18n)
+
+    val mapArgs: JsValue = Json.obj(
+      "msgType" -> msgType,
+      "msg" -> msg, 
+      "commonErrorID" -> commonErrorID, 
+      "commonErrorText" -> commonErrorText
+    )
+
+    sendMessage("executionResult", mapArgs)
   }
 
   override def postStop() = {
