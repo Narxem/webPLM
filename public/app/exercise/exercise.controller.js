@@ -164,7 +164,7 @@
     function saveEditorContent()  {
       // Save the editor content in the local storage
       $window.localStorage.setItem("editor." + exercise.id + "." + exercise.currentProgrammingLanguage, editor.getValue());
-      $window.localStorage.setItem("commitId." + exercise.id + "." + exercise.currentProgrammingLanguage, exercise.commitId);
+      $window.localStorage.setItem("localCommitId." + exercise.id + "." + exercise.currentProgrammingLanguage, exercise.commitId);
     }
 
     function loadEditorContent() {
@@ -227,17 +227,21 @@
         break;
       case 'loadContent': 
         exercise.commitId = args.id;
-        var localCommitId = $window.localStorage.getItem("commitId." + exercise.id + "." + exercise.currentProgrammingLanguage);
-        if (localCommitId === exercise.commitId || localCommitId === "") {
+        console.log("key : localCommitId." + exercise.id + "." + exercise.currentProgrammingLanguage);
+        var localCommitId = $window.localStorage.getItem("localCommitId." + exercise.id + "." + exercise.currentProgrammingLanguage);
+        console.log("local commit : " + localCommitId);
+        console.log("editeur : " + $window.localStorage.getItem("editor." + exercise.id + "." + exercise.currentProgrammingLanguage));
+        if (localCommitId === exercise.commitId && (localCommitId !== "none")) {
           var editorValue = $window.localStorage.getItem("editor." + exercise.id + "." + exercise.currentProgrammingLanguage);
           if (editorValue !== null) {
             editor.setValue(editorValue);
             // FIXME
-            console.log("content loaded from local storage");
+            console.log("content loaded from localStorage");
           }
         } else
         // FIXME
-          console.log("content NOT loaded");
+          console.log("content NOT loaded from localStorage");
+        saveEditorContent();
         break;
       }
 
@@ -494,7 +498,6 @@
           }
         }
         progLangs.setCurrentProglang(progLang);
-        exercise.currentProgrammingLanguage = progLang.lang.toLowerCase();
         updateUI(progLang, data.instructions, data.api, data.code.trim());
       }
 
@@ -841,6 +844,8 @@
     }
     
     function updateUI(pl, instructions, api, code) {
+      exercise.currentProgrammingLanguage = pl.lang;
+      console.log("exercise.currentProgrammingLanguage : " + exercise.currentProgrammingLanguage);
       if (pl !== null) {
         if (pl.lang === 'Blockly') {
           exercise.ide = 'blockly';

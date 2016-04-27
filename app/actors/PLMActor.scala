@@ -312,13 +312,18 @@ class PLMActor (
 
   def getCommitId(msg: JsValue, response: String) {
     var optExerciseID : Option[String]  = (msg \ "args" \ "exerciseID").asOpt[String]
-          var optLanguage : Option[String]  = (msg \ "args" \ "language").asOpt[String]
-          var filename: String = null
-          (optExerciseID.getOrElse(None), optLanguage.getOrElse(None)) match {
-            case (exerciseID: String, language: String) =>
-              filename = exerciseID + "." + language + ".code"
-              sendMessage(response, Json.obj("id" -> plm.getLastCommitId(exerciseID, language)))
-          }
+    var optLanguage : Option[String]  = (msg \ "args" \ "language").asOpt[String]
+    var filename: String = null
+    var plmLanguage: String = null
+    (optExerciseID.getOrElse(None), optLanguage.getOrElse(None)) match {
+      case (exerciseID: String, language: String) =>
+        language match {
+          case "Java" => plmLanguage = "java"
+          case "Scala" => plmLanguage = "scala"
+          case "Python" => plmLanguage = "py"
+        }
+        sendMessage(response, Json.obj("id" -> plm.getLastCommitId(exerciseID, plmLanguage)))
+    }
   }
   
   def initExecutionManager() {
