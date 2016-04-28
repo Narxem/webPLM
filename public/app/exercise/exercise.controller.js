@@ -164,7 +164,6 @@
     function saveEditorContent()  {
       // Save the editor content in the local storage
       $window.localStorage.setItem("editor." + exercise.id + "." + exercise.currentProgrammingLanguage, editor.getValue());
-      $window.localStorage.setItem("localCommitId." + exercise.id + "." + exercise.currentProgrammingLanguage, exercise.commitId);
     }
 
     function loadEditorContent() {
@@ -177,7 +176,7 @@
 
     function getExercise() {
       var args = {
-        lessonID: exercise.lessonID
+        lessonID: exercise.lessonID,
       };
       if (exercise.id !== '') {
         args.exerciseID = exercise.id;
@@ -227,24 +226,26 @@
         break;
       case 'loadContent': 
         exercise.commitId = args.id;
-        console.log("key : localCommitId." + exercise.id + "." + exercise.currentProgrammingLanguage);
-        var localCommitId = $window.localStorage.getItem("localCommitId." + exercise.id + "." + exercise.currentProgrammingLanguage);
-        console.log("local commit : " + localCommitId);
-        console.log("editeur : " + $window.localStorage.getItem("editor." + exercise.id + "." + exercise.currentProgrammingLanguage));
+        var localCommitId = $window.localStorage.getItem("id." + exercise.id + "." + exercise.currentProgrammingLanguage);
+        console.log("localCommitId : " + localCommitId);
+        console.log("exercise.commitId : " + exercise.commitId);
         if (localCommitId === exercise.commitId && (localCommitId !== "none")) {
-          var editorValue = $window.localStorage.getItem("editor." + exercise.id + "." + exercise.currentProgrammingLanguage);
-          if (editorValue !== null) {
-            editor.setValue(editorValue);
+          var localCode = $window.localStorage.getItem("editor." + exercise.id + "." + exercise.currentProgrammingLanguage);
+          if (localCode !== null) {
+            exercise.code = localCode;
             // FIXME
             console.log("content loaded from localStorage");
           }
-        } else
+        } else {
         // FIXME
+          exercise.code = exercise.serverCode.trim();
           console.log("content NOT loaded from localStorage");
+        }
+        $window.localStorage.setItem("id." + exercise.id + "." + exercise.currentProgrammingLanguage, exercise.commitId);
         saveEditorContent();
+        connection.sendMessage('commitId', {exerciseID: exercise.id, language: exercise.currentProgrammingLanguage});
         break;
       }
-
     }
 
     function setExercise(data) {
@@ -256,7 +257,7 @@
 
       exercise.instructions = $sce.trustAsHtml(data.instructions);
       exercise.api = $sce.trustAsHtml(data.api);
-      exercise.code = data.code.trim();
+      exercise.serverCode = data.code;
       exercise.currentWorldID = data.selectedWorldID;
 
       if (data.exception === 'nonImplementedWorldException') {
@@ -498,7 +499,7 @@
           }
         }
         progLangs.setCurrentProglang(progLang);
-        updateUI(progLang, data.instructions, data.api, data.code.trim());
+        updateUI(progLang, data.instructions, data.api, null);
       }
 
       $(document).foundation('dropdown', 'reflow');
@@ -508,6 +509,8 @@
       exercise.result = '';
       exercise.logs = '';
       exercisesList.setCurrentLessonID(exercise.lessonID);
+      loadEditorContent();
+      console.log("language : " + exercise.currentProgrammingLanguage);
 
     }
 
@@ -845,6 +848,7 @@
     
     function updateUI(pl, instructions, api, code) {
       exercise.currentProgrammingLanguage = pl.lang;
+      // FIXME
       console.log("exercise.currentProgrammingLanguage : " + exercise.currentProgrammingLanguage);
       if (pl !== null) {
         if (pl.lang === 'Blockly') {
@@ -875,7 +879,6 @@
           $timeout(function () {
             exercise.editor.refresh();
           }, 0);
-          loadEditorContent();
         }
       }
       updateInstructions(instructions, api);
