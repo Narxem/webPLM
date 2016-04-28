@@ -164,6 +164,10 @@
     function saveEditorContent()  {
       // Save the editor content in the local storage
       $window.localStorage.setItem("editor." + exercise.id + "." + exercise.currentProgrammingLanguage, editor.getValue());
+      if (exercise.commitId === "none") 
+        connection.sendMessage('commitId', {exerciseID: exercise.id, language: exercise.currentProgrammingLanguage});
+      $window.localStorage.setItem("id." + exercise.id + "." + exercise.currentProgrammingLanguage, exercise.commitId);
+
     }
 
     function loadEditorContent() {
@@ -242,8 +246,6 @@
           console.log("content NOT loaded from localStorage");
         }
         $window.localStorage.setItem("id." + exercise.id + "." + exercise.currentProgrammingLanguage, exercise.commitId);
-        saveEditorContent();
-        connection.sendMessage('commitId', {exerciseID: exercise.id, language: exercise.currentProgrammingLanguage});
         break;
       }
     }
@@ -510,7 +512,6 @@
       exercise.logs = '';
       exercisesList.setCurrentLessonID(exercise.lessonID);
       loadEditorContent();
-      console.log("language : " + exercise.currentProgrammingLanguage);
 
     }
 
