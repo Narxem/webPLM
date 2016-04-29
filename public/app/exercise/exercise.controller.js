@@ -164,6 +164,7 @@
     function saveEditorContent()  {
       // Save the editor content in the local storage
       $window.localStorage.setItem("editor." + exercise.id + "." + exercise.currentProgrammingLanguage, editor.getValue());
+      console.log(exercise.commitId);
       if (exercise.commitId === "none") 
         connection.sendMessage('commitId', {exerciseID: exercise.id, language: exercise.currentProgrammingLanguage});
       $window.localStorage.setItem("id." + exercise.id + "." + exercise.currentProgrammingLanguage, exercise.commitId);
@@ -512,7 +513,6 @@
       exercise.logs = '';
       exercisesList.setCurrentLessonID(exercise.lessonID);
       loadEditorContent();
-
     }
 
     function updateInstructions(instructions, api) {
@@ -658,7 +658,6 @@
     }
 
     function updateModel() {     
-      connection.sendMessage("getLastCommit", {exerciseID: exercise.id, language: exercise.currentProgrammingLanguage})
       var currentState = exercise.currentWorld.currentState;
       var nbStates = exercise.currentWorld.operations.length - 1;
       if (currentState !== nbStates) {
